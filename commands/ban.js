@@ -1,0 +1,17 @@
+const fs = require("fs");
+const { getMentioned, reply, getSender, getIsOwner, SIG } = require("./_helper");
+const FILE = "./data/banned.json";
+function getB() { try { return JSON.parse(fs.readFileSync(FILE,"utf8")); } catch { return []; } }
+function saveB(d) { try { fs.writeFileSync(FILE, JSON.stringify(d,null,2)); } catch {} }
+module.exports = async (sock, chatId, message) => {
+    const sender = getSender(sock, message);
+    if (!await getIsOwner(sock)(sender, sock, chatId)) return reply(sock, chatId, "❌ Owner only.", message);
+    const mentioned = getMentioned(message);
+    if (!mentioned.length) return reply(sock, chatId, "❌ Usage: .ban @user", message);
+    const banned = getB();
+    for (const user of mentioned) {
+        if (banned.includes(user)) { await sock.sendMessage(chatId, { text: `⚠️ Already banned.${SIG}`, mentions:[user] }, {quoted:message}); continue; }
+        banned.push(user); saveB(banned);
+        await sock.sendMessage(chatId, { text: `🚫 @${user.split("@")[0]} banned.${SIG}`, mentions:[user] }, {quoted:message});
+    }
+};
