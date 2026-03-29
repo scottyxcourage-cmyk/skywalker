@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: skywalker-md
+    runtime: node
+    plan: free
+    buildCommand: npm install --legacy-peer-deps
+    startCommand: npm start
+    healthCheckPath: /ping
+    envVars:
+      - key: OWNER_NUMBER
+        value: 263773367795
+      - key: APP_URL
+        value: https://skywalker-md.onrender.com
+      - key: PORT
+        value: 3000

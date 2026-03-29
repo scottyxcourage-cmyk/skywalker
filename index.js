@@ -1,0 +1,208 @@
+/**
+ * Skywalker_MD — Web Pair Multi-User Bot
+ * 100 Commands | Owner: 263773367795
+ * Deploy on Render
+ */
+require("dotenv").config();
+const fs        = require("fs");
+const path      = require("path");
+const chalk     = require("chalk");
+const express   = require("express");
+const cors      = require("cors");
+const NodeCache = require("node-cache");
+const pino      = require("pino");
+const {
+    default: makeWASocket, useMultiFileAuthState, DisconnectReason,
+    fetchLatestBaileysVersion, jidNormalizedUser, makeCacheableSignalKeyStore, delay,
+} = require("@whiskeysockets/baileys");
+const { handleMessages, handleGroupParticipantUpdate } = require("./main");
+const settings   = require("./settings");
+const { getSender }    = require("./lib/getSender");
+const { makeIsOwner }  = require("./lib/isOwner");
+const { isBanned }     = require("./lib/isBanned");
+
+const PORT    = process.env.PORT || 3000;
+const APP_URL = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL || `http://localhost:${PORT}`;
+const PAIRING_TIMEOUT = 5 * 60 * 1000;
+
+["sessions","temp","data","public"].forEach(d => { if (!fs.existsSync(d)) fs.mkdirSync(d,{recursive:true}); });
+const dataFiles = {
+    "./data/banned.json": "[]", "./data/bc_users.json": "[]",
+    "./data/chatbot.json": `{"groups":{},"dms":false}`,
+    "./data/welcome.json": "{}", "./data/goodbye.json": "{}",
+    "./data/autoreply.json": `{"enabled":false,"rules":{}}`,
+    "./data/antilink.json": "{}", "./data/anticall.json": `{"enabled":false}`,
+    "./data/antidelete.json": `{"enabled":false}`, "./data/antiviewonce.json": `{"enabled":false}`,
+    "./data/autoreact.json": `{"enabled":false,"emoji":"❤️"}`, "./data/autoread.json": `{"enabled":false}`,
+    "./data/alwaysonline.json": `{"enabled":false}`, "./data/mode.json": `{"mode":"public"}`,
+    "./data/warnings.json": "{}", "./data/settings.json": "{}",
+};
+Object.entries(dataFiles).forEach(([f,def]) => { if (!fs.existsSync(f)) fs.writeFileSync(f,def); });
+
+const tempDir = path.join(process.cwd(),"temp");
+process.env.TMPDIR=tempDir; process.env.TEMP=tempDir; process.env.TMP=tempDir;
+setInterval(()=>{ fs.readdir(tempDir,(err,files)=>{ if(err)return; files.forEach(f=>{ const fp=path.join(tempDir,f); fs.stat(fp,(e,s)=>{ if(!e&&Date.now()-s.mtimeMs>2*60*60*1000)fs.unlink(fp,()=>{}); }); }); }); },2*60*60*1000);
+setInterval(()=>{ if(global.gc)global.gc(); },60000);
+setInterval(()=>{ if(process.memoryUsage().rss/1024/1024>450){console.log("⚠️ RAM high");process.exit(1);} },30000);
+
+const STATS_FILE="./sessions/stats.json";
+let totalPaired=0;
+try{if(fs.existsSync(STATS_FILE))totalPaired=JSON.parse(fs.readFileSync(STATS_FILE,"utf8")).total||0;}catch{}
+function saveStats(){try{fs.writeFileSync(STATS_FILE,JSON.stringify({total:totalPaired}));}catch{}}
+
+function createStore(){
+    const messages={},MAX=20;
+    function bind(ev){ev.on("messages.upsert",({messages:msgs})=>{msgs.forEach(msg=>{const jid=msg.key?.remoteJid;if(!jid)return;if(!messages[jid])messages[jid]=[];messages[jid].push(msg);if(messages[jid].length>MAX)messages[jid]=messages[jid].slice(-MAX);});});}
+    async function loadMessage(jid,id){return(messages[jid]||[]).find(m=>m.key?.id===id)||undefined;}
+    return{bind,loadMessage};
+}
+
+const activeBots=new Map();
+
+function startKeepAlive(){
+    const url=APP_URL.startsWith("http")?APP_URL:`https://${APP_URL}`;
+    setInterval(async()=>{try{const fetch=require("node-fetch");await fetch(`${url}/ping`);}catch{}},10*60*1000);
+}
+
+const app=express();
+app.use(cors()); app.use(express.json());
+app.use(express.static(path.join(__dirname,"public")));
+app.get("/ping",(req,res)=>res.json({status:"alive",bot:"Skywalker_MD",version:settings.version,active:[...activeBots.values()].filter(b=>b.status==="connected").length,paired:totalPaired,uptime:Math.floor(process.uptime())}));
+app.get("/",(req,res)=>res.sendFile(path.join(__dirname,"public","index.html")));
+app.get("/stats",(req,res)=>res.json({total:totalPaired,active:[...activeBots.values()].filter(b=>b.status==="connected").length}));
+
+app.post("/pair",async(req,res)=>{
+    let{phone}=req.body;
+    if(!phone)return res.status(400).json({error:"Phone number is required."});
+    phone=phone.replace(/[^0-9]/g,"");
+    if(phone.length<7||phone.length>15)return res.status(400).json({error:"Invalid number. Use international format e.g. 263773367795"});
+    const existing=activeBots.get(phone);
+    if(existing?.status==="connected")return res.json({success:true,status:"already_connected"});
+    if(existing?.status==="pairing")return res.status(429).json({error:"Pairing in progress. Enter the code within 5 minutes."});
+    activeBots.set(phone,{status:"pairing",code:null,sock:null});
+    const timer=setTimeout(()=>{const b=activeBots.get(phone);if(b?.status==="pairing"){try{if(b.sock)b.sock.end();}catch{}activeBots.delete(phone);cleanSession(phone);}},PAIRING_TIMEOUT);
+    activeBots.get(phone).timer=timer;
+    try{const code=await startPairing(phone,timer);return res.json({success:true,code,phone,expires:"5 minutes"});}
+    catch(err){activeBots.delete(phone);clearTimeout(timer);return res.status(500).json({error:err.message||"Something went wrong."});}
+});
+
+app.get("/status/:phone",(req,res)=>{
+    const phone=req.params.phone.replace(/[^0-9]/g,"");
+    const b=activeBots.get(phone);
+    if(!b)return res.json({status:"not_found"});
+    return res.json({status:b.status,code:b.code});
+});
+
+app.listen(PORT,"0.0.0.0",()=>{
+    console.log(chalk.hex("#9933ff")(`\n╔═══════════════════════════════════════╗`));
+    console.log(chalk.hex("#9933ff")(`║  ⚡  Skywalker_MD — Web Pair Bot      ║`));
+    console.log(chalk.hex("#9933ff")(`║  🌐  Port: ${PORT}                         ║`));
+    console.log(chalk.hex("#9933ff")(`║  🚀  100 Commands Ready               ║`));
+    console.log(chalk.hex("#9933ff")(`║  📊  ${totalPaired} users paired so far       ║`));
+    console.log(chalk.hex("#9933ff")(`╚═══════════════════════════════════════╝\n`));
+    console.log(chalk.hex("#ff3366")(`🔗 ${APP_URL}\n`));
+    startKeepAlive();
+    loadExistingSessions();
+});
+
+async function startPairing(phone,timer){
+    const sessionDir=`./sessions/${phone}`;
+    if(!fs.existsSync(sessionDir))fs.mkdirSync(sessionDir,{recursive:true});
+    const{version}=await fetchLatestBaileysVersion();
+    const{state,saveCreds}=await useMultiFileAuthState(sessionDir);
+    const userStore=createStore();
+    const sock=makeWASocket({version,logger:pino({level:"silent"}),printQRInTerminal:false,browser:["Ubuntu","Chrome","20.0.04"],auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,pino({level:"fatal"}).child({level:"fatal"}))},msgRetryCounterCache:new NodeCache(),connectTimeoutMs:60000,defaultQueryTimeoutMs:60000,keepAliveIntervalMs:25000,markOnlineOnConnect:true,getMessage:async(key)=>{const msg=await userStore.loadMessage(jidNormalizedUser(key.remoteJid),key.id);return msg?.message||{conversation:""};}});
+    sock._ownerPhone=phone; sock.public=true;
+    sock.ev.on("creds.update",saveCreds);
+    userStore.bind(sock.ev);
+    const bt=activeBots.get(phone); if(bt)bt.sock=sock;
+    await delay(2000);
+    let code;
+    try{code=await sock.requestPairingCode(phone);code=code?.match(/.{1,4}/g)?.join("-")||code;}
+    catch(err){try{sock.end();}catch{}throw new Error("Could not generate code. Make sure your number is registered on WhatsApp.");}
+    const b=activeBots.get(phone); if(b)b.code=code;
+    console.log(chalk.yellow(`📱 Pairing: +${phone} | Code: ${code}`));
+    sock.ev.on("connection.update",async(update)=>{
+        const{connection,lastDisconnect}=update;
+        if(connection==="open"){
+            clearTimeout(timer);
+            console.log(chalk.green(`✅ Connected: +${phone}`));
+            const bt=activeBots.get(phone); if(bt)bt.status="connected";
+            totalPaired++; saveStats();
+            try{const credsPath=`./sessions/${phone}/creds.json`;if(fs.existsSync(credsPath)){fs.writeFileSync(`./sessions/${phone}/session_backup.b64`,Buffer.from(fs.readFileSync(credsPath,"utf8")).toString("base64"));}}catch{}
+            try{await delay(2000);const botNum=sock.user.id.split(":")[0]+"@s.whatsapp.net";await sock.sendMessage(botNum,{text:`╔═══════════════════════════╗\n║  ⚡  *Skywalker_MD*  ⚡   ║\n╚═══════════════════════════╝\n\n✅ Your bot is now *LIVE!*\n\n*Popular Commands:*\n• *.menu* — all 100 commands\n• *.alive* — bot status\n• *.ai hello* — AI assistant\n• *.sticker* — make sticker\n• *.tiktok <url>* — TikTok\n• *.vv* — reveal view-once\n• *.chatbot on* — AI chatbot\n• *.weather Harare* — weather\n\n🌐 ${APP_URL}\n\n_skywalker©_`});}catch{}
+            startBotHandlers(sock,phone);
+        }
+        if(connection==="close"){
+            const errCode=lastDisconnect?.error?.output?.statusCode;
+            console.log(chalk.red(`⛔ Disconnected: +${phone} | Code: ${errCode}`));
+            if(errCode===DisconnectReason.loggedOut||errCode===401){activeBots.delete(phone);cleanSession(phone);return;}
+            const b=activeBots.get(phone);if(b){b.status="reconnecting";setTimeout(()=>reconnectBot(phone),5000);}
+        }
+    });
+    return code;
+}
+
+function startBotHandlers(sock,phone){
+    const sleepIv=setInterval(async()=>{try{await sock.sendPresenceUpdate("available");}catch{}},4*60*1000);
+    const bt=activeBots.get(phone); if(bt)bt.sleepIv=sleepIv;
+    sock.ev.on("messages.upsert",async(update)=>{
+        try{
+            if(update.type!=="notify")return;
+            const mek=update.messages[0]; if(!mek?.message)return;
+            if(Object.keys(mek.message)[0]==="ephemeralMessage")mek.message=mek.message.ephemeralMessage.message;
+            const chatId=mek.key.remoteJid; if(!chatId)return;
+            if(chatId==="status@broadcast")return;
+            if(mek.key.id?.startsWith("BAE5")&&mek.key.id.length===16)return;
+            const sender=getSender(sock,mek); if(!sender)return;
+            if(isBanned(sender))return;
+            const isOwnerFn=makeIsOwner(phone);
+            const rawText=mek.message?.conversation||mek.message?.extendedTextMessage?.text||mek.message?.imageMessage?.caption||mek.message?.videoMessage?.caption||"";
+            if(rawText.trim().toLowerCase()===".session"){
+                if(await isOwnerFn(sender,sock,chatId)){
+                    const f=`./sessions/${phone}/creds.json`;
+                    if(fs.existsSync(f)){const enc=Buffer.from(fs.readFileSync(f,"utf8")).toString("base64");fs.writeFileSync(`./sessions/${phone}/session_backup.b64`,enc);await sock.sendMessage(chatId,{document:Buffer.from(enc),fileName:`SkywalkerMD_SESSION_${phone}.txt`,mimetype:"text/plain",caption:"🔐 *Your SESSION_ID*\n\nSave this file safely.\n\n_skywalker©_"},{quoted:mek});}
+                    else{await sock.sendMessage(chatId,{text:"❌ No session file yet.\n\n_skywalker©_"},{quoted:mek});}
+                    return;
+                }
+            }
+            await handleMessages(sock,update);
+        }catch(e){if(!e.message?.includes("Connection"))console.error(`[${phone}] Error:`,e.message);}
+    });
+    sock.ev.on("call",async(calls)=>{for(const call of calls){const jid=call.from||call.peerJid||call.chatId;if(!jid)continue;try{if(typeof sock.rejectCall==="function"&&call.id)await sock.rejectCall(call.id,jid);}catch{}}});
+    sock.ev.on("group-participants.update",async(u)=>{try{await handleGroupParticipantUpdate(sock,u);}catch{}});
+    console.log(chalk.green(`⚡ Bot active: +${phone}`));
+}
+
+async function reconnectBot(phone){
+    try{
+        const sessionDir=`./sessions/${phone}`;
+        if(!fs.existsSync(`${sessionDir}/creds.json`)){activeBots.delete(phone);return;}
+        const{version}=await fetchLatestBaileysVersion();
+        const{state,saveCreds}=await useMultiFileAuthState(sessionDir);
+        const userStore=createStore();
+        const sock=makeWASocket({version,logger:pino({level:"silent"}),printQRInTerminal:false,browser:["Ubuntu","Chrome","20.0.04"],auth:{creds:state.creds,keys:makeCacheableSignalKeyStore(state.keys,pino({level:"fatal"}).child({level:"fatal"}))},msgRetryCounterCache:new NodeCache(),connectTimeoutMs:60000,defaultQueryTimeoutMs:60000,keepAliveIntervalMs:25000,markOnlineOnConnect:true,getMessage:async(key)=>{const msg=await userStore.loadMessage(jidNormalizedUser(key.remoteJid),key.id);return msg?.message||{conversation:""};}});
+        sock._ownerPhone=phone; sock.public=true;
+        sock.ev.on("creds.update",saveCreds);
+        userStore.bind(sock.ev);
+        const bt=activeBots.get(phone); if(bt){bt.sock=sock;bt.status="reconnecting";}
+        sock.ev.on("connection.update",async({connection,lastDisconnect})=>{
+            if(connection==="open"){console.log(chalk.green(`✅ Reconnected: +${phone}`));const b=activeBots.get(phone);if(b)b.status="connected";startBotHandlers(sock,phone);}
+            if(connection==="close"){const errCode=lastDisconnect?.error?.output?.statusCode;if(errCode===DisconnectReason.loggedOut||errCode===401){activeBots.delete(phone);cleanSession(phone);return;}const b=activeBots.get(phone);if(b){b.status="reconnecting";setTimeout(()=>reconnectBot(phone),10000);}}
+        });
+    }catch(e){console.error(`Reconnect error +${phone}:`,e.message);setTimeout(()=>reconnectBot(phone),15000);}
+}
+
+async function loadExistingSessions(){
+    try{
+        if(!fs.existsSync("./sessions"))return;
+        const dirs=fs.readdirSync("./sessions").filter(d=>{if(d==="stats.json")return false;const dp=path.join("./sessions",d);try{return fs.statSync(dp).isDirectory()&&fs.existsSync(path.join(dp,"creds.json"));}catch{return false;}});
+        if(!dirs.length){console.log(chalk.yellow("📭 No existing sessions"));return;}
+        console.log(chalk.hex("#9933ff")(`♻️  Restoring ${dirs.length} session(s)...`));
+        for(const phone of dirs){if(activeBots.has(phone))continue;activeBots.set(phone,{status:"reconnecting",code:null,sock:null});await delay(2000);reconnectBot(phone);}
+    }catch(e){console.error("Load sessions error:",e.message);}
+}
+
+function cleanSession(phone){try{const d=`./sessions/${phone}`;if(fs.existsSync(d))fs.rm(d,{recursive:true,force:true},()=>{});}catch{}}
+process.on("uncaughtException",e=>{if(!e.message?.includes("Connection"))console.error("Uncaught:",e.message);});
+process.on("unhandledRejection",e=>{if(!String(e)?.includes("Connection"))console.error("Rejection:",e);});

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Skywalker_MD — WhatsApp Bot</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--b:#1a0a3e;--p:#6600cc;--r:#cc0033;--pb:#4400aa;--rb:#aa0022;--acc:#9933ff;--acc2:#ff3366}
+body{min-height:100vh;background:#080010;font-family:"Segoe UI",sans-serif;color:#fff;overflow-x:hidden}
+.bg{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0}
+.bg::before{content:"";position:absolute;top:-150px;left:-150px;width:500px;height:500px;background:radial-gradient(circle,rgba(102,0,204,.25) 0%,transparent 70%);animation:drift 10s ease-in-out infinite}
+.bg::after{content:"";position:absolute;bottom:-150px;right:-150px;width:450px;height:450px;background:radial-gradient(circle,rgba(204,0,51,.2) 0%,transparent 70%);animation:drift 14s ease-in-out infinite reverse}
+.bg2{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:300px;height:300px;background:radial-gradient(circle,rgba(102,0,204,.12) 0%,transparent 70%);pointer-events:none;z-index:0;animation:pulse2 6s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,-20px)}}
+@keyframes pulse2{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.2)}}
+.wrap{position:relative;z-index:1;max-width:460px;margin:0 auto;padding:24px 16px 48px}
+.header{text-align:center;padding:36px 0 28px}
+.logo{display:inline-flex;align-items:center;justify-content:center;width:90px;height:90px;background:linear-gradient(135deg,#6600cc,#cc0033);border-radius:28px;font-size:44px;margin-bottom:18px;box-shadow:0 0 60px rgba(102,0,204,.6),0 0 30px rgba(204,0,51,.3);animation:logopulse 3s ease-in-out infinite}
+@keyframes logopulse{0%,100%{box-shadow:0 0 60px rgba(102,0,204,.6),0 0 30px rgba(204,0,51,.3)}50%{box-shadow:0 0 100px rgba(102,0,204,.9),0 0 60px rgba(204,0,51,.5)}}
+h1{font-size:28px;font-weight:900;background:linear-gradient(135deg,#9933ff,#ff3366);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:6px}
+.sub{color:#444;font-size:14px;margin-bottom:14px}
+.badge{display:inline-flex;align-items:center;gap:6px;background:rgba(153,51,255,.1);border:1px solid rgba(153,51,255,.3);border-radius:20px;padding:5px 14px;font-size:11px;color:#9933ff;font-weight:600}
+.dot{width:7px;height:7px;background:#9933ff;border-radius:50%;animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.stats{display:flex;gap:10px;justify-content:center;margin-top:12px}
+.sp{background:rgba(255,255,255,.04);border:1px solid rgba(153,51,255,.15);border-radius:16px;padding:5px 14px;font-size:12px;color:#555}
+.sp b{color:#888}
+.card{background:rgba(255,255,255,.03);border:1px solid rgba(153,51,255,.15);border-radius:20px;padding:24px;margin-bottom:12px;backdrop-filter:blur(8px)}
+label{display:block;color:#555;font-size:13px;margin-bottom:8px;font-weight:500}
+.iw{position:relative}
+.iw span{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:18px}
+input{width:100%;background:rgba(255,255,255,.04);border:1.5px solid rgba(153,51,255,.2);border-radius:12px;padding:13px 13px 13px 46px;color:#fff;font-size:16px;outline:none;transition:all .2s}
+input:focus{border-color:#9933ff;box-shadow:0 0 0 3px rgba(153,51,255,.1)}
+input::placeholder{color:#222}
+.btn{width:100%;margin-top:14px;padding:14px;background:linear-gradient(135deg,#6600cc,#cc0033);border:none;border-radius:12px;color:#fff;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;position:relative;overflow:hidden}
+.btn::before{content:"";position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);transition:left .5s}
+.btn:hover:not(:disabled)::before{left:100%}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 10px 30px rgba(153,51,255,.4)}
+.btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.code-card{background:linear-gradient(135deg,rgba(102,0,204,.1),rgba(204,0,51,.05));border:1.5px solid rgba(153,51,255,.3);border-radius:20px;padding:28px;text-align:center;margin-bottom:12px}
+.code-lbl{font-size:11px;color:#9933ff;letter-spacing:3px;text-transform:uppercase;font-weight:700;margin-bottom:14px}
+.code-val{font-size:44px;font-weight:900;letter-spacing:10px;font-family:"Courier New",monospace;background:linear-gradient(135deg,#9933ff,#ff3366);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-shadow:none;margin-bottom:20px;filter:drop-shadow(0 0 20px rgba(153,51,255,.5))}
+.copy-btn{background:rgba(153,51,255,.1);border:1px solid rgba(153,51,255,.3);border-radius:8px;padding:9px 18px;color:#9933ff;font-size:13px;font-weight:600;cursor:pointer}
+.copy-btn:hover{background:rgba(153,51,255,.2)}
+.tbar-wrap{margin-top:16px}
+.tbar{height:5px;background:rgba(255,255,255,.06);border-radius:5px;overflow:hidden;margin-bottom:6px}
+.tfill{height:100%;background:linear-gradient(90deg,#6600cc,#cc0033);border-radius:5px;transition:width 1s linear}
+.ttxt{display:flex;justify-content:space-between;font-size:12px;color:#444}
+.steps-card{background:rgba(255,255,255,.02);border:1px solid rgba(153,51,255,.1);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+.step{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:13px;color:#555;align-items:center}
+.step:last-child{border:none}
+.sn{width:24px;height:24px;border-radius:50%;background:rgba(153,51,255,.1);border:1px solid rgba(153,51,255,.25);color:#9933ff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step b{color:#aaa}
+.success-card{background:linear-gradient(135deg,rgba(102,0,204,.08),rgba(204,0,51,.04));border:1.5px solid rgba(153,51,255,.25);border-radius:20px;padding:32px;text-align:center}
+.si{font-size:56px;margin-bottom:14px;animation:pop .5s ease}
+@keyframes pop{0%{transform:scale(0)}80%{transform:scale(1.1)}100%{transform:scale(1)}}
+.st{font-size:20px;font-weight:900;background:linear-gradient(135deg,#9933ff,#ff3366);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:8px}
+.ss{font-size:14px;color:#555;margin-bottom:18px}
+.cmds{background:rgba(255,255,255,.02);border:1px solid rgba(153,51,255,.1);border-radius:10px;padding:14px;text-align:left;font-size:13px;color:#555;line-height:2.2;margin-bottom:14px}
+.cmds code{background:rgba(153,51,255,.1);color:#9933ff;padding:1px 6px;border-radius:4px;font-size:12px}
+.reset{width:100%;padding:11px;background:transparent;border:1px solid rgba(153,51,255,.15);border-radius:10px;color:#444;font-size:13px;cursor:pointer}
+.reset:hover{border-color:rgba(153,51,255,.3);color:#9933ff}
+.err{background:rgba(204,0,51,.06);border:1px solid rgba(204,0,51,.2);border-radius:10px;padding:12px;color:#ff3366;font-size:13px;margin-top:10px;display:none}
+.feats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.feat{background:rgba(255,255,255,.02);border:1px solid rgba(153,51,255,.1);border-radius:14px;padding:14px;text-align:center}
+.fi{font-size:22px;margin-bottom:6px}
+.ft{font-size:12px;font-weight:700;color:#888}
+.fd{font-size:11px;color:#333;margin-top:3px}
+footer{text-align:center;margin-top:14px;font-size:12px;color:#222}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="bg2"></div>
+<div class="wrap">
+  <div class="header">
+    <div class="logo">⚡</div>
+    <h1>Skywalker_MD</h1>
+    <p class="sub">Pair your number — your bot starts instantly</p>
+    <div class="badge"><div class="dot"></div> Server Online</div>
+    <div class="stats">
+      <div class="sp">⚡ <b id="stat-bots">...</b> bots running</div>
+      <div class="sp">🚀 <b>100</b> commands</div>
+    </div>
+  </div>
+
+  <div id="sec1">
+    <div class="card">
+      <label>📱 Enter your WhatsApp number</label>
+      <div class="iw">
+        <span>🌍</span>
+        <input id="phone" type="text" placeholder="e.g. 263773367795" maxlength="15" inputmode="numeric"/>
+      </div>
+      <button class="btn" id="pbtn" onclick="getCode()">
+        <span>Activate Skywalker_MD</span><span>⚡</span>
+      </button>
+      <div class="err" id="e1"></div>
+    </div>
+    <div class="feats">
+      <div class="feat"><div class="fi">⚡</div><div class="ft">Instant</div><div class="fd">Bot starts in 60s</div></div>
+      <div class="feat"><div class="fi">🚀</div><div class="ft">100 Commands</div><div class="fd">Fully featured</div></div>
+      <div class="feat"><div class="fi">🔒</div><div class="ft">Secure</div><div class="fd">Your number only</div></div>
+      <div class="feat"><div class="fi">🌌</div><div class="ft">Always Online</div><div class="fd">24/7 running</div></div>
+    </div>
+  </div>
+
+  <div id="sec2" style="display:none">
+    <div class="code-card">
+      <div class="code-lbl">Your Pairing Code</div>
+      <div class="code-val" id="cval">----</div>
+      <button class="copy-btn" onclick="cpCode()">📋 Copy Code</button>
+      <div class="tbar-wrap">
+        <div class="tbar"><div class="tfill" id="tfill" style="width:100%"></div></div>
+        <div class="ttxt"><span>⏰ Time remaining</span><b id="tcnt">5:00</b></div>
+      </div>
+    </div>
+    <div class="steps-card">
+      <div class="step"><div class="sn">1</div><span>Open <b>WhatsApp</b> on your phone</span></div>
+      <div class="step"><div class="sn">2</div><span>Tap <b>Settings → Linked Devices</b></span></div>
+      <div class="step"><div class="sn">3</div><span>Tap <b>Link a Device</b></span></div>
+      <div class="step"><div class="sn">4</div><span>Select <b>Link with phone number</b></span></div>
+      <div class="step"><div class="sn">5</div><span>Enter the <b>8-digit code</b> above ✅</span></div>
+    </div>
+  </div>
+
+  <div id="sec3" style="display:none">
+    <div class="success-card">
+      <div class="si">⚡</div>
+      <div class="st">Skywalker_MD is LIVE!</div>
+      <div class="ss">Your bot is running.<br/>Check WhatsApp for a welcome message!</div>
+      <div class="cmds">
+        <b>Try these commands:</b><br/>
+        <code>.menu</code> — all 100 commands<br/>
+        <code>.alive</code> — bot status<br/>
+        <code>.ai hello</code> — AI assistant<br/>
+        <code>.sticker</code> — make sticker<br/>
+        <code>.tiktok &lt;url&gt;</code> — download TikTok<br/>
+        <code>.chatbot on</code> — enable AI chat<br/>
+        <code>.vv</code> — reveal view-once
+      </div>
+      <button class="reset" onclick="reset()">↩ Pair another number</button>
+    </div>
+  </div>
+  <footer>Skywalker_MD v1.0.0 — © Skywalker — 100 Commands</footer>
+</div>
+<script>
+const SECS=300; let phone="",code="",tiv=null,piv=null,sl=SECS;
+fetch("/stats").then(r=>r.json()).then(d=>{document.getElementById("stat-bots").textContent=d.active||d.total||0;}).catch(()=>{document.getElementById("stat-bots").textContent="...";});
+function show(id){["sec1","sec2","sec3"].forEach(s=>document.getElementById(s).style.display=s===id?"block":"none");}
+function err(id,msg){const e=document.getElementById(id);e.textContent="❌ "+msg;e.style.display="block";}
+function noerr(id){document.getElementById(id).style.display="none";}
+function fmt(s){return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,"0")}`;}
+async function getCode(){
+    const inp=document.getElementById("phone");phone=inp.value.trim().replace(/[^0-9]/g,"");noerr("e1");
+    if(!phone||phone.length<7||phone.length>15){err("e1","Enter a valid international number e.g. 263773367795");return;}
+    const btn=document.getElementById("pbtn");btn.disabled=true;btn.innerHTML='<div class="spin"></div><span>Connecting...</span>';
+    try{
+        const res=await fetch("/pair",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone})});
+        const d=await res.json();
+        if(!res.ok||d.error){err("e1",d.error||"Something went wrong.");btn.disabled=false;btn.innerHTML='<span>Activate Skywalker_MD</span><span>⚡</span>';return;}
+        if(d.status==="already_connected"){show("sec3");return;}
+        code=d.code;document.getElementById("cval").textContent=code;show("sec2");startTimer();startPoll(phone);
+    }catch{err("e1","Cannot reach server.");btn.disabled=false;btn.innerHTML='<span>Activate Skywalker_MD</span><span>⚡</span>';}
+}
+function startTimer(){sl=SECS;if(tiv)clearInterval(tiv);tick();tiv=setInterval(()=>{sl--;tick();if(sl<=0){clearInterval(tiv);document.querySelector(".ttxt").innerHTML='<span style="color:#ff3366">⚠️ Expired</span><span style="color:#555;cursor:pointer" onclick="reset()">Try again →</span>';}},1000);}
+function tick(){document.getElementById("tcnt").textContent=fmt(sl);const f=document.getElementById("tfill");f.style.width=(sl/SECS*100)+"%";f.style.background=sl>60?"linear-gradient(90deg,#6600cc,#cc0033)":sl>30?"#9933ff":"#ff3366";}
+function startPoll(p){if(piv)clearInterval(piv);let n=0;piv=setInterval(async()=>{n++;if(n>120){clearInterval(piv);return;}try{const r=await fetch("/status/"+p);const d=await r.json();if(d.status==="connected"){clearInterval(piv);clearInterval(tiv);show("sec3");fetch("/stats").then(r=>r.json()).then(d=>{document.getElementById("stat-bots").textContent=d.active||d.total||0;}).catch(()=>{});}}catch{}},3000);}
+function cpCode(){if(!code)return;navigator.clipboard.writeText(code).then(()=>{const b=document.querySelector(".copy-btn");b.textContent="✅ Copied!";setTimeout(()=>b.textContent="📋 Copy Code",2000);});}
+function reset(){phone="";code="";if(tiv)clearInterval(tiv);if(piv)clearInterval(piv);show("sec1");document.getElementById("phone").value="";const btn=document.getElementById("pbtn");btn.disabled=false;btn.innerHTML='<span>Activate Skywalker_MD</span><span>⚡</span>';noerr("e1");}
+document.addEventListener("DOMContentLoaded",()=>{show("sec1");document.getElementById("phone").addEventListener("keydown",e=>{if(e.key==="Enter")getCode();});});
+</script>
+</body>
+</html>
